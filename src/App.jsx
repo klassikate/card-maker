@@ -1,57 +1,75 @@
 import React, { useState, useRef } from "react";
 import defaultBg from "./assets/bg.png";
 
-/**
- * CardMaker — генератор карточек:
- * - В поле ввода — HTML для каждого слайда;
- * - Разделитель слайдов: ++++ (четыре плюса);
- * - Можно загрузить 1+ файлов фона — используются по порядку;
- * - HTML рендерится в SVG foreignObject -> рисуется на canvas -> экспорт PNG.
- */
 export default function CardMaker() {
-  const [input, setInput] = useState(
-    // пример: 2 слайда, разделённые ++++
-    `<div style="font-family:Inter, system-ui; padding: 40px;">
-      <h1 style="font-size:64px; margin:0 0 20px;">Заголовок слайда 1</h1>
-      <p style="font-size:36px; margin:0 0 10px;">Немного <b>жирного</b> текста и <span style="background:#ffd700;padding:4px;border-radius:4px;">выделение</span>.</p>
-      <ul><li>Пункт один</li><li>Пункт два</li></ul>
-    </div>
-    ++++
-    <div style="font-family:Inter, system-ui; padding: 40px;">
-      <h2 style="font-size:56px; margin:0 0 14px;">Слайд 2</h2>
-      <p style="font-size:34px;">Курсив: <i>пример</i> и <span style='font-weight:700'>важное</span></p>
-    </div>`
-  );
-
-  const [bgFiles, setBgFiles] = useState([]); // dataURLs
+  const [input, setInput] = useState(`<div>
+    <h1>Заголовок</h1>
+    <p>Описание с <span>выделением</span> текста.</p>
+  </div>`);
+  const [bgFiles, setBgFiles] = useState([]);
   const [cards, setCards] = useState([]);
+  const [theme, setTheme] = useState("light"); // light | dark
+  const [gradient, setGradient] = useState("none"); // none | darktop | lighttop
   const canvasRef = useRef(null);
 
-  // Размеры — при необходимости поменяй
   const WIDTH = 1080;
-  const HEIGHT = 1920;
+  const HEIGHT = 1080;
 
-  // Преобразует HTML в SVG-строку с foreignObject
-  function makeSvgDataUrlFromHtml(html, width = WIDTH, height = HEIGHT) {
-    // Оборачиваем HTML в namespace и задаём базовые стили (можно расширять)
+  function makeSvgDataUrlFromHtml(html) {
+    const textColor = theme === "light" ? "#fff" : "#000";
+    const spanBg = theme === "light" ? "#000" : "#fff";
+    const spanColor = theme === "light" ? "#fff" : "#000";
+
+    const gradientStyle =
+      gradient === "darktop"
+        ? "linear-gradient(to bottom, rgba(0,0,0,0.7), rgba(0,0,0,0))"
+        : gradient === "lighttop"
+        ? "linear-gradient(to bottom, rgba(255,255,255,0.7), rgba(255,255,255,0))"
+        : "none";
+
     const escaped = `<?xml version="1.0" encoding="utf-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}">
   <foreignObject width="100%" height="100%">
-    <div xmlns="http://www.w3.org/1999/xhtml" style="width:${width}px;height:${height}px;box-sizing:border-box;">
+    <div xmlns="http://www.w3.org/1999/xhtml"
+         style="
+            width:${WIDTH}px;
+            height:${HEIGHT}px;
+            box-sizing:border-box;
+            font-family:Inter, system-ui;
+            padding:140px;
+            color:${textColor};
+            position:relative;
+            background:${gradientStyle};
+         ">
+      <style>
+        h1 {
+          font-size:84px;
+          margin:0 0 20px 0;
+          line-height:1.1;
+        }
+        p {
+          font-size:34px;
+          margin:0;
+          line-height:1.3;
+        }
+        span {
+          background:${spanBg};
+          color:${spanColor};
+          padding:4px 8px;
+          border-radius:6px;
+        }
+      </style>
       ${html}
     </div>
   </foreignObject>
 </svg>`;
 
-    // encodeURIComponent безопаснее для inline-URI
     const svg64 = encodeURIComponent(escaped)
       .replace(/'/g, "%27")
       .replace(/"/g, "%22");
-
     return `data:image/svg+xml;charset=utf-8,${svg64}`;
   }
 
-  // Загружает image по src (dataURL или url)
   function loadImage(src) {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -61,13 +79,9 @@ export default function CardMaker() {
     });
   }
 
-  // Обработка выбранных файлов фона — читаем их как dataURL
   function handleBgFilesChange(e) {
     const files = Array.from(e.target.files || []);
-    if (!files.length) {
-      setBgFiles([]);
-      return;
-    }
+    if (!files.length) return setBgFiles([]);
     const readers = files.map(
       (f) =>
         new Promise((res) => {
@@ -79,164 +93,144 @@ export default function CardMaker() {
     Promise.all(readers).then((dataUrls) => setBgFiles(dataUrls));
   }
 
-  // Основная генерация: разбиваем input на части по ++++, для каждого слайда рисуем фон + HTML -> сохраняем dataURL
   async function generateCards() {
-    const parts = input
-      .split("++++")
-      .map((p) => p.trim())
-      .filter(Boolean);
-
+    const parts = input.split("++++").map((p) => p.trim()).filter(Boolean);
     const canvas = canvasRef.current || document.createElement("canvas");
     canvas.width = WIDTH;
     canvas.height = HEIGHT;
     const ctx = canvas.getContext("2d");
 
     const results = [];
-
-    // preload default background as dataURL
     let defaultBgDataUrl = defaultBg;
-    // если defaultBg — модульный импорт, браузер отдаст путь, можно использовать как src
 
     for (let i = 0; i < parts.length; i++) {
-      // Очистка холста
       ctx.clearRect(0, 0, WIDTH, HEIGHT);
 
-      // 1) фон: выбираем bgFiles[i] если есть, иначе первый bgFiles[0], иначе defaultBg
       const bgSrc = bgFiles[i] || bgFiles[0] || defaultBgDataUrl;
+
       try {
         const bgImg = await loadImage(bgSrc);
-        // подгоняем фон под канву (можно сохранить пропорции, сейчас растягиваем)
-        ctx.drawImage(bgImg, 0, 0, WIDTH, HEIGHT);
-      } catch (e) {
-        // если фон не загрузился — просто заливка
-        ctx.fillStyle = "#111";
+        // cover-подгонка фона (без растяжения)
+        const imgRatio = bgImg.width / bgImg.height;
+        const boxRatio = WIDTH / HEIGHT;
+        let drawWidth = WIDTH;
+        let drawHeight = HEIGHT;
+        let offsetX = 0;
+        let offsetY = 0;
+
+        if (imgRatio > boxRatio) {
+          drawHeight = HEIGHT;
+          drawWidth = bgImg.width * (HEIGHT / bgImg.height);
+          offsetX = (WIDTH - drawWidth) / 2;
+        } else {
+          drawWidth = WIDTH;
+          drawHeight = bgImg.height * (WIDTH / bgImg.width);
+          offsetY = (HEIGHT - drawHeight) / 2;
+        }
+
+        ctx.drawImage(bgImg, offsetX, offsetY, drawWidth, drawHeight);
+      } catch {
+        ctx.fillStyle = theme === "light" ? "#000" : "#fff";
         ctx.fillRect(0, 0, WIDTH, HEIGHT);
       }
 
-      // 2) HTML -> SVG -> Image -> draw on top
-      // parts[i] — ожидаем корректный HTML. Рекомендуем оборачивать в контейнер с padding/стилями.
-      const svgUrl = makeSvgDataUrlFromHtml(parts[i], WIDTH, HEIGHT);
+      const svgUrl = makeSvgDataUrlFromHtml(parts[i]);
       try {
         const svgImg = await loadImage(svgUrl);
-        // можно задать прозрачность слоя с HTML, или использовать blend, сейчас просто рисуем поверх
         ctx.drawImage(svgImg, 0, 0, WIDTH, HEIGHT);
       } catch (e) {
-        // при ошибке рендеринга HTML — вывести текст ошибки на канве
-        ctx.fillStyle = "#fff";
-        ctx.font = "24px Inter, system-ui";
-        ctx.fillText("Ошибка рендеринга HTML", 40, 120);
-        console.error("HTML->SVG render error:", e);
+        ctx.fillStyle = "#ff0000";
+        ctx.font = "24px Inter";
+        ctx.fillText("Ошибка рендеринга HTML", 40, 80);
       }
 
-      const dataUrl = canvas.toDataURL("image/png");
-      results.push({ dataUrl, html: parts[i] });
+      results.push({ dataUrl: canvas.toDataURL("image/png"), html: parts[i] });
     }
 
     setCards(results);
   }
 
-  // Скачать одну картинку
   function downloadImage(dataUrl, filename) {
     const a = document.createElement("a");
     a.href = dataUrl;
     a.download = filename;
-    document.body.appendChild(a);
     a.click();
-    a.remove();
-  }
-
-  // Скачать все
-  function downloadAll() {
-    if (!cards.length) return;
-    cards.forEach((c, idx) => {
-      // без setTimeout, браузеры иногда блокируют — но тут синхронно сгенерирован
-      downloadImage(c.dataUrl, `card-${idx + 1}.png`);
-    });
-  }
-
-  // Очистить карточки
-  function clearCards() {
-    setCards([]);
   }
 
   return (
     <div style={{ fontFamily: "Inter, system-ui", padding: 20, maxWidth: 980, margin: "0 auto" }}>
-      <h1>Card Maker — HTML → картинка</h1>
+      <h1>Card Maker — улучшенная версия</h1>
 
-      <p>
-        Напиши HTML для каждого слайда. Разделяй слайды строкой <code>++++</code>. Можно загружать 1 или
-        несколько картинок фона (используются по порядку). HTML будет отрисован сверху и превращён в PNG.
-      </p>
+      <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+        <label>
+          Тема:{" "}
+          <select value={theme} onChange={(e) => setTheme(e.target.value)}>
+            <option value="light">Светлая</option>
+            <option value="dark">Тёмная</option>
+          </select>
+        </label>
+        <label>
+          Градиент:{" "}
+          <select value={gradient} onChange={(e) => setGradient(e.target.value)}>
+            <option value="none">Без</option>
+            <option value="darktop">Тёмный сверху</option>
+            <option value="lighttop">Светлый сверху</option>
+          </select>
+        </label>
+      </div>
 
       <label style={{ display: "block", marginBottom: 8 }}>
-        Фон (можно выбрать несколько файлов):{" "}
+        Фон (можно выбрать несколько):{" "}
         <input type="file" accept="image/*" multiple onChange={handleBgFilesChange} />
       </label>
 
       <textarea
         value={input}
         onChange={(e) => setInput(e.target.value)}
-        rows={12}
+        rows={10}
         style={{
           width: "100%",
-          padding: 12,
-          fontSize: 14,
-          borderRadius: 8,
-          border: "1px solid #ddd",
-          boxSizing: "border-box",
           fontFamily: "monospace",
+          border: "1px solid #ccc",
+          borderRadius: 8,
+          padding: 10,
+          boxSizing: "border-box",
         }}
       />
 
-      <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
+      <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
         <button onClick={generateCards} style={buttonStyle}>
           Generate
         </button>
-        <button onClick={downloadAll} style={{ ...buttonStyle, background: "#10b981" }}>
-          Download all
-        </button>
-        <button onClick={clearCards} style={{ ...buttonStyle, background: "#ef4444" }}>
-          Clear
-        </button>
-      </div>
-
-      <div style={{ marginTop: 18 }}>
-        <strong>Фоны, загруженные для генерации:</strong>
-        <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-          {bgFiles.length === 0 && <div style={{ color: "#666" }}>Нет загруженных фонов — будет использоваться дефолтный</div>}
-          {bgFiles.map((b, i) => (
-            <img key={i} src={b} alt={`bg-${i}`} style={{ width: 120, height: 80, objectFit: "cover", borderRadius: 6, border: "1px solid #ddd" }} />
-          ))}
-        </div>
       </div>
 
       <div style={{ marginTop: 20 }}>
         <h3>Результаты</h3>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
-          {cards.length === 0 && <div style={{ color: "#666" }}>Нет карточек — сгенерируй их кнопкой «Generate»</div>}
-          {cards.map((c, idx) => (
-            <div key={idx} style={{ border: "1px solid #eee", borderRadius: 8, overflow: "hidden", background: "#fff" }}>
-              <img src={c.dataUrl} alt={`card-${idx + 1}`} style={{ width: "100%", display: "block" }} onClick={() => window.open(c.dataUrl)} />
-              <div style={{ padding: 8, display: "flex", gap: 8 }}>
-                <button onClick={() => downloadImage(c.dataUrl, `card-${idx + 1}.png`)} style={{ flex: 1, padding: 8, borderRadius: 6, border: "none", background: "#2563eb", color: "#fff" }}>
-                  Download
-                </button>
-              </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px,1fr))", gap: 12 }}>
+          {cards.map((c, i) => (
+            <div key={i} style={{ border: "1px solid #ddd", borderRadius: 8, overflow: "hidden" }}>
+              <img src={c.dataUrl} alt={`card-${i + 1}`} style={{ width: "100%", display: "block" }} />
+              <button
+                onClick={() => downloadImage(c.dataUrl, `card-${i + 1}.png`)}
+                style={{ width: "100%", padding: 8, background: "#2563eb", color: "#fff", border: "none" }}
+              >
+                Скачать
+              </button>
             </div>
           ))}
         </div>
       </div>
 
-      {/* скрытый canvas — используем для экспорта */}
-      <canvas ref={canvasRef} style={{ display: "none" }} width={WIDTH} height={HEIGHT} />
+      <canvas ref={canvasRef} style={{ display: "none" }} width={WIDTH} height={HEIGHT}></canvas>
     </div>
   );
 }
 
 const buttonStyle = {
-  padding: "10px 16px",
-  borderRadius: 8,
   background: "#2563eb",
   color: "#fff",
+  padding: "10px 16px",
+  borderRadius: 8,
   border: "none",
+  cursor: "pointer",
 };
