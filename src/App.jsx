@@ -36,7 +36,7 @@ export default function CardMaker() {
             height:${HEIGHT}px;
             box-sizing:border-box;
             font-family:Inter, system-ui;
-            padding:140px;
+            padding:140px 160px;
             color:${textColor};
             position:relative;
             background:${gradientStyle};
@@ -48,7 +48,7 @@ export default function CardMaker() {
           line-height:1.1;
         }
         p {
-          font-size:34px;
+          font-size:64px;
           margin:0;
           line-height:1.3;
         }
