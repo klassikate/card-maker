@@ -13,7 +13,7 @@ export default function CardMaker() {
   const canvasRef = useRef(null);
 
   const WIDTH = 1080;
-  const HEIGHT = 1080;
+  const HEIGHT = 1920;
 
   function makeSvgDataUrlFromHtml(html) {
     const textColor = theme === "light" ? "#fff" : "#000";
