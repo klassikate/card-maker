@@ -17,8 +17,8 @@ export default function CardMaker() {
 
   function makeSvgDataUrlFromHtml(html) {
     const textColor = theme === "light" ? "#fff" : "#000";
-    const spanBg = theme === "light" ? "#000" : "#fff";
-    const spanColor = theme === "light" ? "#fff" : "#000";
+    const spanBg = theme === "light" ? "#fff" : "#000";
+    const spanColor = theme === "light" ? "#000" : "#fff";
 
     const gradientStyle =
       gradient === "darktop"
